@@ -6,6 +6,7 @@
 # Raylib
 build/build_files
 build/external
+bin/
 
 # Prerequisites
 *.d
