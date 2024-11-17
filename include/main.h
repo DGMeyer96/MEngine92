@@ -10,7 +10,9 @@
 
 enum DrawMode {
 	GAME,
-	MAP
+	MAP,
+	GAME_DEBUG,
+	MAP_DEBUG
 };
 
 enum Resolution {
@@ -37,9 +39,10 @@ struct Player {
 	float rotateSpeed;
 	float colliderRadius;
 	Rectangle collisionRect;
+	Vector2 forward;
 } typedef Player;
 
-Vector2 rotateAroundPoint(Vector2 origin, Vector2 point, float angleDegrees)
+Vector2 Vector2RotateAroundPoint(Vector2 origin, Vector2 point, float angleDegrees)
 {
 	Vector2 result = Vector2Subtract(point, origin);
 	result = Vector2Rotate(result, angleDegrees * DEG2RAD);
@@ -48,7 +51,7 @@ Vector2 rotateAroundPoint(Vector2 origin, Vector2 point, float angleDegrees)
 	return result;
 }
 
-Vector2 forwardVector(Vector2 point, float angleDegrees)
+Vector2 Vector2Forward(Vector2 point, float angleDegrees)
 {
 	Vector2 result = (Vector2){
 		cosf(angleDegrees * DEG2RAD),

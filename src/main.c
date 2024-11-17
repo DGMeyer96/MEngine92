@@ -31,7 +31,7 @@ For a C++ project simply rename the file to .cpp and re-run the build script
 #include "resource_dir.h"			// utility header for SearchAndSetResourceDir
 #include <stdio.h>                  // Required for: fopen(), fclose(), fputc(), fwrite(), printf(), fprintf(), funopen()
 #include <time.h>                   // Required for: time_t, tm, time(), localtime(), strftime()
-#include <math.h>
+#include <math.h>					// Need Math extensions
 
 // Rendering stuff
 #define SCREEN_WIDTH 1280
@@ -86,36 +86,13 @@ struct Player player = {
 	.colliderRadius = 0.2f,
 };
 
-// Custom logging function
-void CustomLog(int msgType, const char* text, va_list args)
-{
-	char timeStr[64] = { 0 };
-	time_t now = time(NULL);
-	struct tm* tm_info = localtime(&now);
-
-	strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", tm_info);
-	printf("[%s] ", timeStr);
-
-	switch (msgType)
-	{
-		case LOG_INFO: printf("[INFO] : "); break;
-		case LOG_ERROR: printf("[ERROR]: "); break;
-		case LOG_WARNING: printf("[WARN] : "); break;
-		case LOG_DEBUG: printf("[DEBUG]: "); break;
-		default: break;
-	}
-
-	vprintf(text, args);
-	printf("\n");
-}
-
 void fillRays(struct MyRay rays[], const int length, Vector2 startPosition, float startAngle)
 {
 	const float rayDistance = 50.0f;
 	for (int i = 0; i < length; i++)
 	{
 		rays[i].start = startPosition;
-		rays[i].end = rotateAroundPoint(
+		rays[i].end = Vector2RotateAroundPoint(
 			startPosition, 
 			Vector2Add(startPosition, (Vector2) { rayDistance, 0.0f }), 
 			(i - (length / 2)) + startAngle
@@ -141,7 +118,7 @@ void DDA(struct MyRay rays[], Vector2 position, float angle)
 		// Middle step is 0
 		// (i * step)
 		float rayAngle = (i * angleStep) + angle - HALF_FOV;
-		Vector2 forward = forwardVector(position, rayAngle);
+		Vector2 forward = Vector2Forward(position, rayAngle);
 
 		// Convert pixel coords into map grid coords
 		int mapCol = position.x;
@@ -238,7 +215,7 @@ void DDASingle(Vector2 position, float angle)
 	ray.start = position;
 
 	// Need to calculate slope (dx / dy)
-	Vector2 forward = forwardVector(position, angle);	// This is slope (m = dx / dy), dx = cos(angle), dy = sin(angle)
+	Vector2 forward = Vector2Forward(position, angle);	// This is slope (m = dx / dy), dx = cos(angle), dy = sin(angle)
 	//TraceLog(LOG_INFO, "Forward = %f | %f", forward.x, forward.y);
 
 	// Convert pixel coords into map grid coords
@@ -370,7 +347,7 @@ void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 		rays[i].start = position;
 
 		float angle = (rays[i].castAngleRadians * RAD2DEG) + player.rotation;
-		Vector2 forward = forwardVector(position, angle);
+		Vector2 forward = Vector2Forward(position, angle);
 		Vector2 step = (Vector2){
 			sqrtf(1 + ((forward.y / forward.x) * (forward.y / forward.x))),
 			sqrtf(1 + ((forward.x / forward.y) * (forward.x / forward.y)))
@@ -449,13 +426,12 @@ void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 
 void DrawDebug()
 {
-	Vector2 forward = forwardVector(player.position, player.rotation);
 	// FPS & Frametime
 	DrawText(TextFormat("FPS: %d", (int)(1 / GetFrameTime())), 0, 0, 20, WHITE);
 	DrawText(TextFormat("Frametime: %.2fms", GetFrameTime() * 1000.0f), 0, 20, 20, WHITE);
 	DrawText(TextFormat("Draw Mode: %d", drawMode), 0, 40, 20, WHITE);
-	DrawText(TextFormat("Scale: %f", scale), 0, 80, 20, WHITE);
-	DrawText(TextFormat("Screen: ( %d , %d )", GetScreenWidth(), GetScreenHeight()), 0, 120, 20, WHITE);
+	DrawText(TextFormat("Scale: %f", scale), 0, 60, 20, WHITE);
+	DrawText(TextFormat("Screen: ( %d , %d )", GetScreenWidth(), GetScreenHeight()), 0, 80, 20, WHITE);
 	//DrawText(TextFormat("Render: ( %d , %d )", GetRenderWidth(), GetRenderHeight()), 0, 140, 20, WHITE);
 	//DrawText(TextFormat("Player Position: ( %f , %f )", player.position.x, player.position.y), 0, 40, 20, WHITE);
 	//DrawText(TextFormat("Player Rotation: %f", player.rotation), 0, 60, 20, WHITE);
@@ -510,7 +486,7 @@ void DrawPlayer()
 {
 	// Draw Player
 	DrawCircle(player.position.x * TILE_SIZE_PIXELS, player.position.y * TILE_SIZE_PIXELS, player.colliderRadius * TILE_SIZE_PIXELS, GREEN);
-	Vector2 temp = forwardVector(player.position, player.rotation);
+	Vector2 temp = player.forward;
 	temp = Vector2Scale(temp, 25.0f);
 	temp = Vector2Add(temp, Vector2Scale(player.position, TILE_SIZE_PIXELS));
 	DrawLine(player.position.x * TILE_SIZE_PIXELS, player.position.y * TILE_SIZE_PIXELS, temp.x, temp.y, GREEN);
@@ -667,13 +643,20 @@ void handleInput()
 {
 	if (IsKeyPressed(KEY_TAB))
 	{
-		if (drawMode == GAME)
+		switch (drawMode)
 		{
-			drawMode = MAP;
-		}
-		else
-		{
-			drawMode = GAME;
+			case GAME:
+				drawMode = GAME_DEBUG;
+				break;
+			case GAME_DEBUG:
+				drawMode = MAP;
+				break;
+			case MAP:
+				drawMode = MAP_DEBUG;
+				break;
+			case MAP_DEBUG:
+				drawMode = GAME;
+				break;
 		}
 	}
 
@@ -710,12 +693,14 @@ void handleInput()
 	if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
 	{
 		player.rotation -= player.rotateSpeed * GetFrameTime();
+		player.forward = Vector2Forward(player.position, player.rotation);
 		if (player.rotation > 360.0f) { player.rotation -= 360.0f; }
 		if (player.rotation < 0.0f) { player.rotation += 360.0f; }
 	}
 	else if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
 	{
 		player.rotation += player.rotateSpeed * GetFrameTime();
+		player.forward = Vector2Forward(player.position, player.rotation);
 		if (player.rotation > 360.0f) { player.rotation -= 360.0f; }
 		if (player.rotation < 0.0f) { player.rotation += 360.0f; }
 	}
@@ -724,7 +709,7 @@ void handleInput()
 	{
 		Vector2 newPosition = Vector2Add(
 			Vector2Scale(
-				forwardVector(player.position, player.rotation),
+				player.forward,
 				player.moveSpeed * GetFrameTime()
 			),
 			player.position
@@ -735,7 +720,7 @@ void handleInput()
 	{
 		Vector2 newPosition = Vector2Add(
 			Vector2Scale(
-				forwardVector(player.position, player.rotation),
+				player.forward,
 				-player.moveSpeed * GetFrameTime()
 			),
 			player.position
@@ -803,16 +788,17 @@ int main ()
 			handleInput();
 			//DDA(rays, player.position, player.rotation);
 			DDANonLinear(rays, player.position, player.rotation);
-			if (drawMode == GAME)
+			if (drawMode == GAME || drawMode == GAME_DEBUG)
 			{
 				Draw3D(rays, checkerboard64);
 			}
-			else
+			else if (drawMode == MAP || drawMode == MAP_DEBUG)
 			{
 				Draw2D(rays);
 				DrawPlayer();
 			}
-			DrawDebug();
+			
+			if (drawMode == GAME_DEBUG || drawMode == MAP_DEBUG) { DrawDebug(); }
 
 			//DrawText(TextFormat("Default Mouse: [%i , %i]", (int)mouse.x, (int)mouse.y), 350, 25, 20, GREEN);
 			//DrawText(TextFormat("Virtual Mouse: [%i , %i]", (int)virtualMouse.x, (int)virtualMouse.y), 350, 55, 20, YELLOW);
