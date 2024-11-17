@@ -3,6 +3,10 @@
 .vscode/
 *.sln
 
+# Raylib
+build/build_files
+build/external
+
 # Prerequisites
 *.d
 
