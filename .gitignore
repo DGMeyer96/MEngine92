@@ -1,6 +1,7 @@
 # Visual Studio & VS Code
 .vs/
 .vscode/
+*.sln
 
 # Prerequisites
 *.d
