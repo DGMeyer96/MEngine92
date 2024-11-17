@@ -3,6 +3,24 @@
 #include "raylib.h"
 #include "raymath.h"
 
+#include <stdlib.h> 
+
+#define MAX(a, b) ((a)>(b)? (a) : (b))
+#define MIN(a, b) ((a)<(b)? (a) : (b))
+
+enum DrawMode {
+	GAME,
+	MAP
+};
+
+enum Resolution {
+	VERY_LOW,
+	LOW,
+	MEDIUM,
+	HIGH,
+	ULTRA
+};
+
 struct MyRay {
 	Vector2 start;
 	Vector2 end;
@@ -10,7 +28,7 @@ struct MyRay {
 	bool hitX;
 	float castAngleRadians;
 	float offset;
-};
+} typedef MyRay;
 
 struct Player {
 	Vector2 position;
@@ -19,7 +37,7 @@ struct Player {
 	float rotateSpeed;
 	float colliderRadius;
 	Rectangle collisionRect;
-};
+} typedef Player;
 
 Vector2 rotateAroundPoint(Vector2 origin, Vector2 point, float angleDegrees)
 {

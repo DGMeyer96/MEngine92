@@ -34,27 +34,35 @@ For a C++ project simply rename the file to .cpp and re-run the build script
 #include <math.h>
 
 // Rendering stuff
-#define SCREEN_WIDTH 1400
-#define SCREEN_HEIGHT 800
-#define VIEWPORT_WIDTH 900
-#define VIEWPORT_HEIGHT 675
+#define SCREEN_WIDTH 1280
+#define SCREEN_HEIGHT 960
+#define MIN_SCREEN_WIDTH 640
+#define MIN_SCREEN_HEIGHT 480
+#define VIEWPORT_WIDTH 640
+#define VIEWPORT_HEIGHT 480
 #define FOV 70
 #define HALF_FOV (FOV / 2)
 #define VERTICAL_FOV (2 * atanf(tanf(FOV / 2) * (VIEWPORT_HEIGHT / VIEWPORT_WIDTH)))
-#define COLUMN_PIXEL_WIDTH 5
-#define RAY_COUNT (VIEWPORT_WIDTH / COLUMN_PIXEL_WIDTH)
 #define DRAW_DISTANCE 20
-#define ANGLE_STEP (float)FOV / (float)RAY_COUNT
-#define TILE_SIZE_PIXELS 50
 #define MAP_LENGTH 10
+#define TILE_SIZE_PIXELS VIEWPORT_HEIGHT / MAP_LENGTH
 // FISHEYE Correction stuff
 #define PROJECTION_PLANE_WIDTH (DRAW_DISTANCE * tanf(DEG2RAD * (FOV / 2)) * 2)
 #define PROJECTION_PLANE_HALF_WIDTH (PROJECTION_PLANE_WIDTH / 2)
 #define X_MAX (VIEWPORT_WIDTH - 1)
 #define HEIGHT_RATIO ((float)VIEWPORT_HEIGHT / (float)VIEWPORT_WIDTH) / (FOV / 90.0f)
-
+// Aspect Ratio scaling stuff
 #define PROJECTION_PLANE_HEIGHT (DRAW_DISTANCE * tanf(VERTICAL_FOV / 2))
 #define HALF_WALL_HEIGHT (10 / 2)
+
+enum DrawMode drawMode = GAME;
+enum Resolution currentResolution = ULTRA;
+
+float scale = 1.0f;
+int column_pixel_width = 1;
+int ray_count = VIEWPORT_WIDTH / 1;
+// Auto fill with largest amount, can't resize smaller in C without too much dynamic allocation overhead for array this small
+struct MyRay rays[641];	
 
 const int map[MAP_LENGTH][MAP_LENGTH] = {
 	{ 1,1,1,1,1,1,1,1,1,1 },
@@ -121,9 +129,9 @@ void DDA(struct MyRay rays[], Vector2 position, float angle)
 	//TraceLog(LOG_INFO, "PROJECTION_PLANE_WIDTH = %f", PROJECTION_PLANE_WIDTH);
 	//const float xProjPlane = (float)(((VIEWPORT_WIDTH * 2.0f) - VIEWPORT_WIDTH) / VIEWPORT_WIDTH) * (float)(PROJECTION_PLANE_WIDTH / 2.0f);
 	
-	const float angleStep = (float)FOV / (float)RAY_COUNT;
+	const float angleStep = (float)FOV / (float)ray_count;
 
-	for (int i = 0; i <= RAY_COUNT; i++)
+	for (int i = 0; i <= ray_count; i++)
 	{
 		rays[i].start = position;
 
@@ -343,8 +351,8 @@ void DDASingle(Vector2 position, float angle)
 
 void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 {
-	const int xPixelWidth = VIEWPORT_WIDTH / RAY_COUNT;
-	const int halfRayCount = RAY_COUNT / 2;
+	const int xPixelWidth = VIEWPORT_WIDTH / ray_count;
+	const int halfRayCount = ray_count / 2;
 
 	// Calculate angles
 	for (int i = 0; i <= halfRayCount; i++)
@@ -354,10 +362,10 @@ void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 		float castAngle = atan2f(X_PROJECTION_PLANE, DRAW_DISTANCE);
 
 		rays[i].castAngleRadians = castAngle;
-		rays[RAY_COUNT - i].castAngleRadians = -castAngle;
+		rays[ray_count - i].castAngleRadians = -castAngle;
 	}
 
-	for (int i = 0; i <= RAY_COUNT; i++)
+	for (int i = 0; i <= ray_count; i++)
 	{
 		rays[i].start = position;
 
@@ -443,11 +451,15 @@ void DrawDebug()
 {
 	Vector2 forward = forwardVector(player.position, player.rotation);
 	// FPS & Frametime
-	DrawText(TextFormat("FPS: %d", (int)(1 / GetFrameTime())), 5, 500, 20, WHITE);
-	DrawText(TextFormat("Frametime: %.2fms", GetFrameTime() * 1000.0f), 5, 530, 20, WHITE);
-	DrawText(TextFormat("Player Position: ( %f , %f )", player.position.x, player.position.y), 5, 560, 20, WHITE);
-	DrawText(TextFormat("Player Rotation: %f", player.rotation), 5, 590, 20, WHITE);
-	DrawText(TextFormat("Player Forward: ( %f , %f )", forward.x, forward.y), 5, 620, 20, WHITE);
+	DrawText(TextFormat("FPS: %d", (int)(1 / GetFrameTime())), 0, 0, 20, WHITE);
+	DrawText(TextFormat("Frametime: %.2fms", GetFrameTime() * 1000.0f), 0, 20, 20, WHITE);
+	DrawText(TextFormat("Draw Mode: %d", drawMode), 0, 40, 20, WHITE);
+	DrawText(TextFormat("Scale: %f", scale), 0, 80, 20, WHITE);
+	DrawText(TextFormat("Screen: ( %d , %d )", GetScreenWidth(), GetScreenHeight()), 0, 120, 20, WHITE);
+	//DrawText(TextFormat("Render: ( %d , %d )", GetRenderWidth(), GetRenderHeight()), 0, 140, 20, WHITE);
+	//DrawText(TextFormat("Player Position: ( %f , %f )", player.position.x, player.position.y), 0, 40, 20, WHITE);
+	//DrawText(TextFormat("Player Rotation: %f", player.rotation), 0, 60, 20, WHITE);
+	//DrawText(TextFormat("Player Forward: ( %f , %f )", forward.x, forward.y), 0, 80, 20, WHITE);
 }
 
 void Draw2D(const struct MyRay rays[])
@@ -470,9 +482,9 @@ void Draw2D(const struct MyRay rays[])
 		}
 	}
 
-	for (int i = 0; i < RAY_COUNT; i++)
+	for (int i = 0; i <= ray_count; i++)
 	{
-		if (i >= (RAY_COUNT / 2) - 3 && i <= (RAY_COUNT / 2) + 3)
+		if (i >= (ray_count / 2) - 3 && i <= (ray_count / 2) + 3)
 		{
 			DrawLine(
 				rays[i].start.x * TILE_SIZE_PIXELS,
@@ -506,13 +518,13 @@ void DrawPlayer()
 
 void Draw3D(struct MyRay rays[], Texture tex)
 {
-	const float widthPercent = (float)COLUMN_PIXEL_WIDTH / (float)VIEWPORT_WIDTH;
+	const float widthPercent = (float)column_pixel_width / (float)VIEWPORT_WIDTH;
 	// Draw Ceiling
-	DrawRectangle(SCREEN_WIDTH - VIEWPORT_WIDTH, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT / 2, LIGHTGRAY);
+	DrawRectangle(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT / 2, LIGHTGRAY);
 	// Draw Floor
-	DrawRectangle(SCREEN_WIDTH - VIEWPORT_WIDTH, VIEWPORT_HEIGHT / 2, VIEWPORT_WIDTH, VIEWPORT_HEIGHT / 2, DARKGRAY);
+	DrawRectangle(0, VIEWPORT_HEIGHT / 2, VIEWPORT_WIDTH, VIEWPORT_HEIGHT / 2, DARKGRAY);
 	// Walls
-	for (int i = 0; i <= RAY_COUNT; i++)
+	for (int i = 0; i <= ray_count; i++)
 	{
 		// Calculate the height based on distance from camera
 		float height = (VIEWPORT_HEIGHT * HEIGHT_RATIO) / rays[i].distance;
@@ -568,9 +580,9 @@ void Draw3D(struct MyRay rays[], Texture tex)
 			texOffset,
 		};
 		Rectangle position = (Rectangle){
-			(SCREEN_WIDTH - VIEWPORT_WIDTH) + (i * COLUMN_PIXEL_WIDTH),
+			i * column_pixel_width,
 			(VIEWPORT_HEIGHT / 2) - (height / 2),
-			COLUMN_PIXEL_WIDTH,
+			column_pixel_width,
 			height,
 		};
 		DrawTexturePro(
@@ -581,10 +593,6 @@ void Draw3D(struct MyRay rays[], Texture tex)
 			0.0f,
 			wallColor
 		);
-		
-
-
-		//DrawTextureRec(tex, rec, (Vector2) { rec.x, rec.y }, wallColor);
 		
 		//rlSetTexture(tex.id);
 		////rlSetTexture(GetShapesTexture().id);
@@ -622,25 +630,33 @@ bool CanMove(Vector2 position)
 	if (map[(int)position.y][(int)position.x + 1] == 1)
 	{
 		wall = (Rectangle){(int)position.x + 1, (int)position.y, 1.0f, 1.0f };
-		DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		if (drawMode == MAP) {
+			DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		}
 		hitRight = CheckCollisionCircleRec(position, player.colliderRadius, wall);
 	}
 	if (map[(int)position.y][(int)position.x - 1] == 1)
 	{
 		wall = (Rectangle){ (int)position.x - 1, (int)position.y, 1.0f, 1.0f };
-		DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		if (drawMode == MAP) {
+			DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		}
 		hitLeft = CheckCollisionCircleRec(position, player.colliderRadius, wall);
 	}
 	if (map[(int)position.y + 1][(int)position.x] == 1)
 	{
 		wall = (Rectangle){ (int)position.x, (int)position.y + 1, 1.0f, 1.0f };
-		DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		if (drawMode == MAP) {
+			DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		}
 		hitDown = CheckCollisionCircleRec(position, player.colliderRadius, wall);
 	}
 	if (map[(int)position.y - 1][(int)position.x] == 1)
 	{
 		wall = (Rectangle){ (int)position.x, (int)position.y - 1, 1.0f, 1.0f };
-		DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		if (drawMode == MAP) {
+			DrawRectangle(wall.x * TILE_SIZE_PIXELS, wall.y * TILE_SIZE_PIXELS, wall.width * TILE_SIZE_PIXELS, wall.height * TILE_SIZE_PIXELS, ORANGE);
+		}
 		hitUp = CheckCollisionCircleRec(position, player.colliderRadius, wall);
 	}
 
@@ -649,6 +665,48 @@ bool CanMove(Vector2 position)
 
 void handleInput()
 {
+	if (IsKeyPressed(KEY_TAB))
+	{
+		if (drawMode == GAME)
+		{
+			drawMode = MAP;
+		}
+		else
+		{
+			drawMode = GAME;
+		}
+	}
+
+	if (IsKeyPressed(KEY_R))
+	{
+		switch (currentResolution)
+		{
+			case VERY_LOW:
+				currentResolution = LOW;
+				column_pixel_width = 5;
+				break;
+			case LOW:
+				currentResolution = MEDIUM;
+				column_pixel_width = 4;
+				break;
+			case MEDIUM:
+				currentResolution = HIGH;
+				column_pixel_width = 2;
+				break;
+			case HIGH:
+				currentResolution = ULTRA;
+				column_pixel_width = 1;
+				break;
+			case ULTRA:
+				currentResolution = VERY_LOW;
+				column_pixel_width = 8;
+				break;
+
+		}
+		ray_count = VIEWPORT_WIDTH / column_pixel_width;
+		TraceLog(LOG_INFO, "Column Pixel Width: %d | Ray Count: %d", column_pixel_width, ray_count);
+	}
+
 	if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
 	{
 		player.rotation -= player.rotateSpeed * GetFrameTime();
@@ -688,15 +746,17 @@ void handleInput()
 
 int main ()
 {
-	// Tell the window to use vysnc and work on high DPI displays
-	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
-	//SetConfigFlags(FLAG_VSYNC_HINT);
-
-	//SetTraceLogCallback(CustomLog);
 	SetTraceLogLevel(LOG_ALL);
 
+	// Tell the window to use vysnc and work on high DPI displays
+	SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT | FLAG_WINDOW_MAXIMIZED);
 	// Create the window and OpenGL context
 	InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "MEngine92");
+	SetWindowMinSize(MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT);
+	// Render texture initialization, used to hold the rendering result so we can easily resize it
+	RenderTexture2D target = LoadRenderTexture(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+	// Texture scale filter to use
+	SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);  
 
 	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
@@ -710,151 +770,85 @@ int main ()
 	Texture redBrick = LoadTexture("red_brick.png");
 	Texture metal = LoadTexture("metal.png");
 	Texture texCoordsDebug = LoadTexture("tex_coords.png");
-
-	struct MyRay rays[RAY_COUNT + 1];
-
+	
 	// game loop
 	while (!WindowShouldClose())		// run the loop untill the user presses ESCAPE or presses the Close button on the window
 	{
-		// drawing
+		// Update
+		//----------------------------------------------------------------------------------
+		// Compute required framebuffer scaling
+		scale = MIN((float)GetScreenWidth() / VIEWPORT_WIDTH, (float)GetScreenHeight() / VIEWPORT_HEIGHT);
+		//renderScale.x = 1.0f / ((float)GetScreenWidth() / VIEWPORT_WIDTH);
+		//renderScale.y = 1.0f / ((float)GetScreenHeight() / VIEWPORT_HEIGHT);
+
+		// Update virtual mouse (clamped mouse value behind game screen)
+		Vector2 mouse = GetMousePosition();
+		Vector2 virtualMouse = { 0 };
+		virtualMouse.x = (mouse.x - (GetScreenWidth() - (VIEWPORT_WIDTH * scale)) * 0.5f) / scale;
+		virtualMouse.y = (mouse.y - (GetScreenHeight() - (VIEWPORT_HEIGHT * scale)) * 0.5f) / scale;
+		virtualMouse = Vector2Clamp(virtualMouse, (Vector2) { 0, 0 }, (Vector2) { (float)VIEWPORT_WIDTH, (float)VIEWPORT_HEIGHT});
+
+		// Apply the same transformation as the virtual mouse to the real mouse (i.e. to work with raygui)
+		//SetMouseOffset(-(GetScreenWidth() - (gameScreenWidth*scale))*0.5f, -(\GetScreenHeight() - (gameScreenHeight*scale))*0.5f);
+		//SetMouseScale(1/scale, 1/scale);
+		//----------------------------------------------------------------------------------
+
+		// Draw
+		//----------------------------------------------------------------------------------
+		// Draw everything in the render texture, note this will not be rendered on screen, yet
+		BeginTextureMode(target);
+			// Setup the backbuffer for drawing (clear color and depth buffers)
+			ClearBackground(BLACK);
+
+			handleInput();
+			//DDA(rays, player.position, player.rotation);
+			DDANonLinear(rays, player.position, player.rotation);
+			if (drawMode == GAME)
+			{
+				Draw3D(rays, checkerboard64);
+			}
+			else
+			{
+				Draw2D(rays);
+				DrawPlayer();
+			}
+			DrawDebug();
+
+			//DrawText(TextFormat("Default Mouse: [%i , %i]", (int)mouse.x, (int)mouse.y), 350, 25, 20, GREEN);
+			//DrawText(TextFormat("Virtual Mouse: [%i , %i]", (int)virtualMouse.x, (int)virtualMouse.y), 350, 55, 20, YELLOW);
+		EndTextureMode();
+
 		BeginDrawing();
-
-		// Setup the backbuffer for drawing (clear color and depth buffers)
-		ClearBackground(BLACK);
-
-		// draw some text using the default font
-		//DrawText("Hello Raylib", 200,200,20,WHITE);
-
-		// draw our texture to the screen
-		//DrawTexture(wabbit, 400, 200, WHITE);
-
-		Draw2D(rays);
-		handleInput();
-		//DDA(rays, player.position, player.rotation);
-		DDANonLinear(rays, player.position, player.rotation);
-		DrawPlayer();
-		Draw3D(rays, checkerboard64);
-		DrawDebug();
-		
-		//DrawTexture(checkerboard64, 50, 50, WHITE);
-
-		//Rectangle texCoords = (Rectangle){
-		//	0.0f,
-		//	0.0f,
-		//	326.0f,
-		//	254.0f,
-		//};
-		//Rectangle position = (Rectangle){
-		//	0.0f,
-		//	500.0f,
-		//	326.0f,
-		//	254.0f,
-		//};
-		//DrawTexturePro(
-		//	texCoordsDebug,
-		//	texCoords,
-		//	position,
-		//	Vector2Zero(),
-		//	0.0f,
-		//	WHITE
-		//);
-		//texCoords.x = 200.0f;
-		//texCoords.width = 32;
-		//position.x = 200.0f;
-		//position.width = 32;
-		//DrawTexturePro(
-		//	texCoordsDebug,
-		//	texCoords,
-		//	position,
-		//	Vector2Zero(),
-		//	0.0f,
-		//	GREEN
-		//);
-
-		//Vector2 scale = (Vector2){ 5.0f, 5.0f };
-		//texCoords.x = 0;
-		//texCoords.y = 0;
-		//texCoords.width = 32;
-		//texCoords.height = 32;
-		//position.x = 400;
-		//position.y = 600;
-		//position.width = 32 * scale.x;
-		//position.height = 32 * scale.y;
-		//DrawTexturePro(
-		//	greyBrick,
-		//	texCoords,
-		//	position,
-		//	(Vector2) { 0.0f, 0.0f },
-		//	0.0f,
-		//	WHITE
-		//);
-
-		//texCoords.x = 0;
-		//texCoords.y = 12;
-		//texCoords.width = 32.0f;
-		//texCoords.height = 6;
-		//position.x = 560;
-		//position.y = 640;
-		//position.width = 160;
-		//position.height = 80;
-		//DrawTexturePro(
-		//	greyBrick,
-		//	texCoords,
-		//	position,
-		//	(Vector2) {0.0f, 0.0f},
-		//	0.0f,
-		//	GREEN
-		//);
-
-		//texCoords.x = 16;
-		//texCoords.y = 16;
-		//texCoords.width = 16;
-		//texCoords.height = 16;
-		//position.x = 560;
-		//position.y = 600;
-		//position.width = 160;
-		//position.height = 160;
-		//DrawTexturePro(
-		//	greyBrick,
-		//	texCoords,
-		//	position,
-		//	(Vector2) {0.5f, 0.5f},
-		//	0.0f,
-		//	MAGENTA
-		//);
-
-
-		//rlSetTexture(checkerboard64.id);
-		////rlSetTexture(GetShapesTexture().id);
-		//rlBegin(RL_QUADS);
-
-		//	rlColor4ub(WHITE.r, WHITE.g, WHITE.b, WHITE.a);
-		//	rlNormal3f(0.0f, 0.0f, 1.0f);	// Normal vector pointing towards viewer
-
-		//	// Top Left
-		//	rlVertex2f(50, 500);
-		//	// Bottom Left
-		//	rlVertex2f(50, 564);
-		//	// Bottom Right
-		//	rlVertex2f(114, 564);
-		//	// Top Right
-		//	rlVertex2f(114, 500);
-
-		//	rlTexCoord2f(0, 0);
-		//	rlTexCoord2f(1, 0);
-		//	rlTexCoord2f(1, 1);
-		//	rlTexCoord2f(0, 1);
-
-		//rlEnd();
-		//rlSetTexture(0);
-
-		//DDASingle(player.position, player.rotation);
-
+			// Clear screen background
+			ClearBackground(BLACK);     
+			// Draw render texture to screen, properly scaled
+			DrawTexturePro(
+				target.texture, 
+				(Rectangle) { 
+					0.0f, 
+					0.0f, 
+					(float)target.texture.width, 
+					(float)-target.texture.height 
+				},
+				(Rectangle) {
+					(GetScreenWidth() - ((float)VIEWPORT_WIDTH * scale)) * 0.5f,
+					(GetScreenHeight() - ((float)VIEWPORT_HEIGHT * scale)) * 0.5f,
+					(float)VIEWPORT_WIDTH * scale, 
+					(float)VIEWPORT_HEIGHT * scale
+				}, 
+				(Vector2) { 0, 0 },
+				0.0f,
+				WHITE
+			);
 		// end the frame and get ready for the next one  (display frame, poll input, etc...)
 		EndDrawing();
+		//--------------------------------------------------------------------------------------
 	}
 
-	// cleanup
+	// De-Initialization
+	//--------------------------------------------------------------------------------------
+	// Unload render texture
+	UnloadRenderTexture(target);        
 	// unload our texture so it can be cleaned up
 	UnloadTexture(wabbit);
 	UnloadTexture(checkerboard);
@@ -866,5 +860,6 @@ int main ()
 
 	// destory the window and cleanup the OpenGL context
 	CloseWindow();
+	//--------------------------------------------------------------------------------------
 	return 0;
 }
