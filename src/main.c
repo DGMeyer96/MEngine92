@@ -56,13 +56,15 @@ For a C++ project simply rename the file to .cpp and re-run the build script
 #define HALF_WALL_HEIGHT (10 / 2)
 
 enum DrawMode drawMode = GAME;
+enum ShadingMdoe shadingMode = TEXTURED;
 enum Resolution currentResolution = ULTRA;
 
 float scale = 1.0f;
 int column_pixel_width = 1;
-int ray_count = VIEWPORT_WIDTH / 1;
-// Auto fill with largest amount, can't resize smaller in C without too much dynamic allocation overhead for array this small
-struct MyRay rays[641];	
+int ray_count = VIEWPORT_WIDTH;
+// Auto fill with largest amount, can't resize smaller in C without too much dynamic allocation overhead for array this small.
+// Basically fill it with the width of the game viewport and add 1
+struct MyRay rays[VIEWPORT_WIDTH + 1];	
 
 const int map[MAP_LENGTH][MAP_LENGTH] = {
 	{ 1,1,1,1,1,1,1,1,1,1 },
@@ -100,12 +102,14 @@ void fillRays(struct MyRay rays[], const int length, Vector2 startPosition, floa
 	}
 }
 
+/*
+ * Standard DDA algorithm that uses fixed angle step for casting each ray. As a result, this does
+ * produce the "fisheye" distortion that can be corrected through cos().  However, this distortion
+ * can only be corrected for an FOV of around 75 degrees.  Anything above this you start to see
+ * a reverse fisheye distortion around the edges of the screen.
+ */
 void DDA(struct MyRay rays[], Vector2 position, float angle)
-{
-	//const float PROJECTION_PLANE_WIDTH = DRAW_DISTANCE * tanf(fov / 2) * 2;
-	//TraceLog(LOG_INFO, "PROJECTION_PLANE_WIDTH = %f", PROJECTION_PLANE_WIDTH);
-	//const float xProjPlane = (float)(((VIEWPORT_WIDTH * 2.0f) - VIEWPORT_WIDTH) / VIEWPORT_WIDTH) * (float)(PROJECTION_PLANE_WIDTH / 2.0f);
-	
+{	
 	const float angleStep = (float)FOV / (float)ray_count;
 
 	for (int i = 0; i <= ray_count; i++)
@@ -134,12 +138,6 @@ void DDA(struct MyRay rays[], Vector2 position, float angle)
 			sqrtf(1 + ((forward.y / forward.x) * (forward.y / forward.x))),
 			sqrtf(1 + ((forward.x / forward.y) * (forward.x / forward.y)))
 		};
-		// Step math simplified thanks to https://lodev.org/cgtutor/raycasting.html
-		//Vector2 step = (Vector2){ abs(1.0f / forward.x), abs(1.0f / forward.y) };
-		//if (forward.x == 0) { step.x = INFINITY; }
-		//if (forward.y == 0) { step.y = INFINITY; }
-		//TraceLog(LOG_INFO, "stepX = %f | stepY = %f", step.x, step.y);
-
 		Vector2 rayLength = Vector2Zero();
 		int dirX, dirY;	// Saves which direction we are moving (Up, Down, Left, Right)
 		// Get length of ray to move 1 step along X-Axis
@@ -199,7 +197,6 @@ void DDA(struct MyRay rays[], Vector2 position, float angle)
 		{
 			rays[i].distance = rayLength.y - step.y;
 		}
-		//rays[i].distance = (rayLength.x * cosf(rayAngle)) - (rayLength.y * sinf(rayAngle));
 
 		rays[i].end = Vector2Add(position, Vector2Scale(forward, distanceChecked));
 
@@ -209,19 +206,21 @@ void DDA(struct MyRay rays[], Vector2 position, float angle)
 	}
 }
 
+/*
+ * DEPRECATED
+ * Mostly used for debugging. Fires a single ray ddirectly if front of the user and draws each 
+ * step until it hits the end.
+ */
 void DDASingle(Vector2 position, float angle)
 {
 	struct MyRay ray;
 	ray.start = position;
 
-	// Need to calculate slope (dx / dy)
-	Vector2 forward = Vector2Forward(position, angle);	// This is slope (m = dx / dy), dx = cos(angle), dy = sin(angle)
-	//TraceLog(LOG_INFO, "Forward = %f | %f", forward.x, forward.y);
+	Vector2 forward = Vector2Forward(position, angle);
 
 	// Convert pixel coords into map grid coords
 	int mapCol = position.x;
 	int mapRow = position.y;
-	//TraceLog(LOG_INFO, "Map Coord: (%d,%d)", mapX, mapY);
 
 	// With slope we need to calculate the how far 1 step in either direction is
 	// i.e. 
@@ -233,11 +232,6 @@ void DDASingle(Vector2 position, float angle)
 		sqrtf(1 + ((forward.y / forward.x) * (forward.y / forward.x))),
 		sqrtf(1 + ((forward.x / forward.y) * (forward.x / forward.y)))
 	};
-	// Step math simplified thanks to https://lodev.org/cgtutor/raycasting.html
-	//Vector2 step = (Vector2){ abs(1.0f / forward.x), abs(1.0f / forward.y) };
-	//if (forward.x == 0) { step.x = INFINITY; }
-	//if (forward.y == 0) { step.y = INFINITY; }
-	//TraceLog(LOG_INFO, "stepX = %f | stepY = %f", step.x, step.y);
 
 	Vector2 rayLength = Vector2Zero();
 	int dirX, dirY;	// Saves which direction we are moving (Up, Down, Left, Right)
@@ -293,12 +287,10 @@ void DDASingle(Vector2 position, float angle)
 
 	ray.end = (Vector2){ position.x, position.y};
 	ray.end = Vector2Add(ray.end, Vector2Scale(forward, distanceChecked));
-	//ray.end = Vector2Scale(ray.end, TILE_SIZE_PIXELS);
 
 	// Draw Ray and collision point
 	DrawLine(ray.start.x * TILE_SIZE_PIXELS, ray.start.y * TILE_SIZE_PIXELS, ray.end.x * TILE_SIZE_PIXELS, ray.end.y * TILE_SIZE_PIXELS, PURPLE);
 	DrawCircle(ray.end.x * TILE_SIZE_PIXELS, ray.end.y * TILE_SIZE_PIXELS, 5.0f, PURPLE);
-
 
 	DrawText(
 		TextFormat("Ray Start: (%f, %f)", ray.start.x, ray.start.y),
@@ -308,13 +300,6 @@ void DDASingle(Vector2 position, float angle)
 		TextFormat("Ray End: (%f, %f)", ray.end.x, ray.end.y),
 		500, 125, 20, WHITE
 	);
-	//float expectedDistance = Vector2Distance(
-	//	position,
-	//	(Vector2) { 300.0f, 225.0f }
-	//);
-	//DrawText(TextFormat("Expected Distance = %f", expectedDistance), 450, 150, 20, WHITE);
-	//DrawLine(ray.start.x, ray.start.y, 300.0f, 225.0f, RAYWHITE);
-	//DrawCircle(300.0f, 225.0f, 5.0f, RAYWHITE);
 
 
 	DrawText(TextFormat("Forward = (%f, %f)", forward.x, forward.y), 500, 175, 20, WHITE);
@@ -326,6 +311,10 @@ void DDASingle(Vector2 position, float angle)
 	DrawText(TextFormat("Ray Length = (%f, %f)", rayLength.x, rayLength.y), 500, 300, 20, WHITE);
 }
 
+/*
+ * DDA using a non-linear angle step for casting each ray. The math for calculating the angles and
+ * distance can be found at https://www.scottsmitelli.com/articles/we-can-fix-your-raycaster/.
+ */
 void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 {
 	const int xPixelWidth = VIEWPORT_WIDTH / ray_count;
@@ -342,6 +331,7 @@ void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 		rays[ray_count - i].castAngleRadians = -castAngle;
 	}
 
+	// Cast the rays
 	for (int i = 0; i <= ray_count; i++)
 	{
 		rays[i].start = position;
@@ -411,12 +401,13 @@ void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 
 		// Save for rendering shadowed walls
 		rays[i].hitX = hitX;
-		if (hitX)
+		// Choose which distance and offset value to store based on if we hit horizontal or vertical wall
+		if (hitX)	// Horizontal wall hit
 		{
 			rays[i].distance = (rayLength.x - step.x) * cosf(rays[i].castAngleRadians);
 			rays[i].offset = fmod(rays[i].end.y, 1.0f);
 		}
-		else
+		else       // Vertical wall hit
 		{
 			rays[i].distance = (rayLength.y - step.y) * cosf(rays[i].castAngleRadians);
 			rays[i].offset = fmod(rays[i].end.x, 1.0f);
@@ -424,6 +415,10 @@ void DDANonLinear(struct MyRay rays[], Vector2 position, float angle)
 	}
 }
 
+/*
+ * DDA using a non-linear angle step for casting each ray. The math for calculating the angles and
+ * distance can be found at https://www.scottsmitelli.com/articles/we-can-fix-your-raycaster/.
+ */
 void DrawDebug()
 {
 	// FPS & Frametime
@@ -438,6 +433,9 @@ void DrawDebug()
 	//DrawText(TextFormat("Player Forward: ( %f , %f )", forward.x, forward.y), 0, 80, 20, WHITE);
 }
 
+/*
+ * Draws the 2D version of the map. Usefule as a type of "automap" and useful for debugging.
+ */
 void Draw2D(const struct MyRay rays[])
 {
 	// Draw Map
@@ -480,10 +478,7 @@ void Draw2D(const struct MyRay rays[])
 			);
 		}
 	}
-}
 
-void DrawPlayer()
-{
 	// Draw Player
 	DrawCircle(player.position.x * TILE_SIZE_PIXELS, player.position.y * TILE_SIZE_PIXELS, player.colliderRadius * TILE_SIZE_PIXELS, GREEN);
 	Vector2 temp = player.forward;
@@ -492,6 +487,13 @@ void DrawPlayer()
 	DrawLine(player.position.x * TILE_SIZE_PIXELS, player.position.y * TILE_SIZE_PIXELS, temp.x, temp.y, GREEN);
 }
 
+/*
+ * Draws the 3D version of the map. Takes an array of rays that have been filled by DDANonLinear().
+ * Also takes in a texture to draw on the walls. Will update this later to look at map data for
+ * the texture to use instead of a single texture. Draws Ceiling and Floor first.  Next goes
+ * through the ray data and draws each column at a fixed width and adjsuts the height based on 
+ * distance from the Player.
+ */
 void Draw3D(struct MyRay rays[], Texture tex)
 {
 	const float widthPercent = (float)column_pixel_width / (float)VIEWPORT_WIDTH;
@@ -515,26 +517,11 @@ void Draw3D(struct MyRay rays[], Texture tex)
 			 
 			texStartOffset = 1.0f / heightPercent;
 			texOffset *= texStartOffset;
-			//TraceLog(LOG_INFO, "[%d] Percent pixels to render: %f", i, texStartOffset);
-			//TraceLog(LOG_INFO, "[%d] Num pixels to render: %f", i, texOffset);
 			texStartOffset = ((1.0f - texStartOffset) / 2.0f) * tex.height;
-			//TraceLog(LOG_INFO, "[%d] texStartOffset: %f", i, texStartOffset);
-			//TraceLog(LOG_INFO, "Height: %f | Height Percent: %f | Corrected Height: %f", height, heightPercent, height / heightPercent);
-			
-			//height = VIEWPORT_HEIGHT;
 
 			// Keep height from exceeding height of viewport
 			height /= heightPercent;
 		}
-
-		// Draw Wall
-		//DrawRectangle(
-		//	(SCREEN_WIDTH - VIEWPORT_WIDTH) + (i * width),
-		//	(VIEWPORT_HEIGHT / 2) - (height / 2),
-		//	width,
-		//	height,
-		//	wallColor
-		//);
 			
 		Color wallColor = DARKGRAY;
 		// Shade walls darker if they are perpedicular
@@ -549,52 +536,57 @@ void Draw3D(struct MyRay rays[], Texture tex)
 		wallColor.g *= brightness;
 		wallColor.b *= brightness;
 
-		Rectangle texCoords = (Rectangle){
-			rays[i].offset * tex.width,
-			texStartOffset,
-			widthPercent * tex.width,
-			texOffset,
-		};
-		Rectangle position = (Rectangle){
-			i * column_pixel_width,
-			(VIEWPORT_HEIGHT / 2) - (height / 2),
-			column_pixel_width,
-			height,
-		};
-		DrawTexturePro(
-			tex,
-			texCoords,
-			position,
-			Vector2Zero(),
-			0.0f,
-			wallColor
-		);
-		
-		//rlSetTexture(tex.id);
-		////rlSetTexture(GetShapesTexture().id);
-		//rlBegin(RL_QUADS);
-
-		//	rlColor4ub(wallColor.r, wallColor.g, wallColor.b, wallColor.a);
-		//	rlNormal3f(0.0f, 0.0f, 1.0f);	// Normal vector pointing towards viewer
-
-		//	// Top Left
-		//	rlVertex2f(rec.x, rec.y);
-		//	rlTexCoord2f(texRec.x, texRec.y + texRec.height);
-		//	// Bottom Left
-		//	rlVertex2f(rec.x, rec.y + rec.height);
-		//	rlTexCoord2f(texRec.x, texRec.y);
-		//	// Bottom Right
-		//	rlVertex2f(rec.x + rec.width, rec.y + rec.height);
-		//	rlTexCoord2f(texRec.x + texRec.width, texRec.y);
-		//	// Top Right
-		//	rlVertex2f(rec.x + rec.width, rec.y);
-		//	rlTexCoord2f(texRec.x + texRec.width, texRec.y + texRec.height);
-
-		//rlEnd();
-		//rlSetTexture(0);
+		if (shadingMode == TEXTURED)
+		{
+			// Draw Wall (Textured)
+			Rectangle texCoords = (Rectangle){
+				rays[i].offset * tex.width,
+				texStartOffset,
+				widthPercent * tex.width,
+				texOffset,
+			};
+			Rectangle position = (Rectangle){
+				i * column_pixel_width,
+				(VIEWPORT_HEIGHT / 2) - (height / 2),
+				column_pixel_width,
+				height,
+			};
+			DrawTexturePro(
+				tex,
+				texCoords,
+				position,
+				Vector2Zero(),
+				0.0f,
+				wallColor
+			);
+		}
+		else if (shadingMode == FLAT)
+		{
+			wallColor = RED;
+			// Shade walls darker if they are perpedicular
+			if (!rays[i].hitX) {
+				wallColor.r *= 0.5f;
+				wallColor.g *= 0.5f;
+				wallColor.b *= 0.5f;
+			}
+			// Draw Wall (Flat Shaded)
+			DrawRectangle(
+				i * column_pixel_width,
+				(VIEWPORT_HEIGHT / 2) - (height / 2),
+				column_pixel_width,
+				height,
+				wallColor
+			);
+		}
 	}
 }
 
+/*
+ * Check if the Player can move to the new position. Called when trying to mvoe forward or backward.
+ * Checks if the spaces in the cardinal directions (up, down, left, right) contain a wall. If 
+ * they do contain a wall, an AABB collision check is made. If no collisions are found between any
+ * of the walls, returns true meaning the player can move to the new position.
+ */
 bool CanMove(Vector2 position)
 {
 	bool hitDown = false;
@@ -639,8 +631,13 @@ bool CanMove(Vector2 position)
 	return !hitDown && !hitLeft && !hitRight && !hitUp;
 }
 
-void handleInput()
+/*
+ * Handles all input from keyboard.  WASD and arrow keys are used for movement and rotation. 
+ * TAB, R, T are used for debug functions such as switching draw modes, render resolution and shading.
+ */
+void HandleInput()
 {
+	// Toggle between Auto Map and Game View
 	if (IsKeyPressed(KEY_TAB))
 	{
 		switch (drawMode)
@@ -659,7 +656,7 @@ void handleInput()
 				break;
 		}
 	}
-
+	// Cycle through render resolution (ray count)
 	if (IsKeyPressed(KEY_R))
 	{
 		switch (currentResolution)
@@ -689,7 +686,20 @@ void handleInput()
 		ray_count = VIEWPORT_WIDTH / column_pixel_width;
 		TraceLog(LOG_INFO, "Column Pixel Width: %d | Ray Count: %d", column_pixel_width, ray_count);
 	}
-
+	// Toggle between shading modes (texture/flat)
+	if (IsKeyPressed(KEY_T))
+	{
+		switch (shadingMode)
+		{
+			case TEXTURED:
+				shadingMode = FLAT;
+				break;
+			case FLAT:
+				shadingMode = TEXTURED;
+				break;
+		}
+	}
+	// Turn Left
 	if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
 	{
 		player.rotation -= player.rotateSpeed * GetFrameTime();
@@ -697,6 +707,7 @@ void handleInput()
 		if (player.rotation > 360.0f) { player.rotation -= 360.0f; }
 		if (player.rotation < 0.0f) { player.rotation += 360.0f; }
 	}
+	// Turn Right
 	else if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
 	{
 		player.rotation += player.rotateSpeed * GetFrameTime();
@@ -704,7 +715,7 @@ void handleInput()
 		if (player.rotation > 360.0f) { player.rotation -= 360.0f; }
 		if (player.rotation < 0.0f) { player.rotation += 360.0f; }
 	}
-
+	// Move Forward
 	if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP))
 	{
 		Vector2 newPosition = Vector2Add(
@@ -716,6 +727,7 @@ void handleInput()
 		);
 		if (CanMove(newPosition)) { player.position = newPosition; }
 	}
+	// Move Backward
 	else if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN))
 	{
 		Vector2 newPosition = Vector2Add(
@@ -746,7 +758,7 @@ int main ()
 	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
 
-	// Load a texture from the resources directory
+	// Load textures from the resources directory
 	Texture wabbit = LoadTexture("wabbit_alpha.png");
 	Texture checkerboard = LoadTexture("checkerboard.png");
 	Texture checkerboard2 = LoadTexture("checkerboard2.png");
@@ -785,8 +797,7 @@ int main ()
 			// Setup the backbuffer for drawing (clear color and depth buffers)
 			ClearBackground(BLACK);
 
-			handleInput();
-			//DDA(rays, player.position, player.rotation);
+			HandleInput();
 			DDANonLinear(rays, player.position, player.rotation);
 			if (drawMode == GAME || drawMode == GAME_DEBUG)
 			{
@@ -795,7 +806,6 @@ int main ()
 			else if (drawMode == MAP || drawMode == MAP_DEBUG)
 			{
 				Draw2D(rays);
-				DrawPlayer();
 			}
 			
 			if (drawMode == GAME_DEBUG || drawMode == MAP_DEBUG) { DrawDebug(); }
@@ -835,7 +845,7 @@ int main ()
 	//--------------------------------------------------------------------------------------
 	// Unload render texture
 	UnloadRenderTexture(target);        
-	// unload our texture so it can be cleaned up
+	// Unload remaining textures
 	UnloadTexture(wabbit);
 	UnloadTexture(checkerboard);
 	UnloadTexture(checkerboard2);

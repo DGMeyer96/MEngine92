@@ -13,7 +13,12 @@ enum DrawMode {
 	MAP,
 	GAME_DEBUG,
 	MAP_DEBUG
-};
+} typedef DrawMode;
+
+enum ShadingMode {
+	TEXTURED,
+	FLAT
+} typedef ShadingMode;
 
 enum Resolution {
 	VERY_LOW,
@@ -21,7 +26,7 @@ enum Resolution {
 	MEDIUM,
 	HIGH,
 	ULTRA
-};
+} typedef Resolution;
 
 struct MyRay {
 	Vector2 start;
