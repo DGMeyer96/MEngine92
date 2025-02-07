@@ -34,6 +34,13 @@ typedef enum RenderQuality {
 	ULTRA
 } RenderQuality;
 
+typedef enum GameMode {
+	MAIN_MENU,
+	EDITOR,
+	SETTINGS,
+	PLAYING
+} GameMode;
+
 typedef struct RayData {
 	Vector2 start;
 	Vector2 end;
@@ -65,3 +72,4 @@ void DDANonLinear(struct RayData rays[], Vector2 position, float angle);
 void DrawDebug();
 void Draw2D(const struct RayData rays[]);
 void Draw3D(const struct RayData rays[], Texture2D tex);
+void DrawMainMenu();

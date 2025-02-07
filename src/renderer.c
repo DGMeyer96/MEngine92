@@ -2,6 +2,10 @@
 #include "resource_dir.h"
 #include "helpful_math.h"
 
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
+#include "../resources/styles/dark/style_dark.h"
+
 #define MIN_SCREEN_WIDTH 640
 #define MIN_SCREEN_HEIGHT 480
 #define VIEWPORT_WIDTH 640
@@ -13,6 +17,7 @@ static Renderer renderer;
 static enum DrawMode drawMode = GAME;
 static enum ShadingMdoe shadingMode = TEXTURED;
 static enum RenderQuality renderQuality = ULTRA;
+static enum GameMode gameMode = MAIN_MENU;
 // Auto fill with largest amount, can't resize smaller in C without too much dynamic allocation overhead for array this small.
 // Basically fill it with the width of the game viewport and add 1
 static struct RayData rays[VIEWPORT_WIDTH + 1];
@@ -37,6 +42,10 @@ void CreateRenderer(bool fullscreen, bool vsync, unsigned int screenWidth, unsig
 	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
 	LoadTextures();
+
+	// Load the appropriate font and GUI elements
+	//GuiLoadStyleDefault();
+	//GuiLoadStyleDark();
 
 	renderer.column_pixel_width = 1;
 	renderer.ray_count = VIEWPORT_WIDTH;
@@ -192,19 +201,32 @@ void UpdateFrameBuffer()
 	// Draw everything in the render texture, note this will not be rendered on screen, yet
 	BeginTextureMode(renderer.renderTex);
 		// Setup the backbuffer for drawing (clear color and depth buffers)
-		ClearBackground(BLACK);
-
-		DDANonLinear(rays, renderer.cameraPosition, renderer.cameraRotation);
-		if (drawMode == GAME || drawMode == GAME_DEBUG)
+		ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+		
+		switch (gameMode)
 		{
-			Draw3D(rays, renderer.textures[3]);
+		case EDITOR:
+			break;
+		case SETTINGS:
+			break;
+		case PLAYING:
+			DDANonLinear(rays, renderer.cameraPosition, renderer.cameraRotation);
+			if (drawMode == GAME || drawMode == GAME_DEBUG)
+			{
+				Draw3D(rays, renderer.textures[3]);
+			}
+			else if (drawMode == MAP || drawMode == MAP_DEBUG)
+			{
+				Draw2D(rays);
+			}
+			if (drawMode == GAME_DEBUG || drawMode == MAP_DEBUG) { DrawDebug(); }
+			break;
+		case MAIN_MENU:
+		default:
+			//DrawMainMenu();
+			break;
 		}
-		else if (drawMode == MAP || drawMode == MAP_DEBUG)
-		{
-			Draw2D(rays);
-		}
-
-		if (drawMode == GAME_DEBUG || drawMode == MAP_DEBUG) { DrawDebug(); }
+		
 
 		//DrawText(TextFormat("Default Mouse: [%i , %i]", (int)mouse.x, (int)mouse.y), 350, 25, 20, GREEN);
 		//DrawText(TextFormat("Virtual Mouse: [%i , %i]", (int)virtualMouse.x, (int)virtualMouse.y), 350, 55, 20, YELLOW);
@@ -216,6 +238,7 @@ void UpdateScreen()
 	BeginDrawing();
 		// Clear screen background
 		ClearBackground(BLACK);
+
 		// Draw render texture to screen, properly scaled
 		DrawTexturePro(
 			renderer.renderTex.texture,
@@ -235,6 +258,10 @@ void UpdateScreen()
 			0.0f,
 			WHITE
 		);
+
+		if (gameMode == MAIN_MENU) {
+			DrawMainMenu();
+		}
 	// end the frame and get ready for the next one  (display frame, poll input, etc...)
 	EndDrawing();
 }
@@ -598,8 +625,9 @@ void DrawDebug()
 	DrawText(TextFormat("FPS: %d", (int)(1 / GetFrameTime())), 0, 0, 20, WHITE);
 	DrawText(TextFormat("Frametime: %.2fms", GetFrameTime() * 1000.0f), 0, 20, 20, WHITE);
 	DrawText(TextFormat("Draw Mode: %d", drawMode), 0, 40, 20, WHITE);
-	DrawText(TextFormat("Scale: %f", renderer.renderScale), 0, 60, 20, WHITE);
-	DrawText(TextFormat("Screen: ( %d , %d )", GetScreenWidth(), GetScreenHeight()), 0, 80, 20, WHITE);
+	DrawText(TextFormat("Render Quality: %d", renderQuality), 0, 60, 20, WHITE);
+	DrawText(TextFormat("Scale: %f", renderer.renderScale), 0, 80, 20, WHITE);
+	DrawText(TextFormat("Screen: ( %d , %d )", GetScreenWidth(), GetScreenHeight()), 0, 100, 20, WHITE);
 	//DrawText(TextFormat("Render: ( %d , %d )", GetRenderWidth(), GetRenderHeight()), 0, 140, 20, WHITE);
 	//DrawText(TextFormat("Player Position: ( %f , %f )", player.position.x, player.position.y), 0, 40, 20, WHITE);
 	//DrawText(TextFormat("Player Rotation: %f", player.rotation), 0, 60, 20, WHITE);
@@ -753,5 +781,24 @@ void Draw3D(struct RayData rays[], Texture2D tex)
 				wallColor
 			);
 		}
+	}
+}
+
+/*
+ * 
+ */
+void DrawMainMenu()
+{
+	//Rectangle windowBounds = (Rectangle){ 160,80,320,320 };
+	//GuiWindowBox(windowBounds, "MEngine92");
+
+	Rectangle titleBounds = (Rectangle){ 160,40,320,40 };
+	GuiDrawText("MEngine92", titleBounds, TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(FONT_DEFAULT, TEXT_COLOR_NORMAL)));
+
+
+	Rectangle playButtonBounds = (Rectangle){ 160,200,320,40 };
+	if (GuiButton(playButtonBounds, "NEW GAME"))
+	{
+
 	}
 }
